@@ -21,6 +21,6 @@ if errorlevel 1 (
   )
 )
 
-rem Abre a interface grafica sem manter uma janela preta do terminal.
-start "" ".venv\Scripts\pythonw.exe" "local_app_v7.py"
+rem Abre a interface grafica cyber-neon sem manter uma janela preta do terminal.
+start "" ".venv\Scripts\pythonw.exe" "local_app_v8.py"
 exit /b 0
