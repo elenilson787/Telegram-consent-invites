@@ -1,1 +1,0 @@
-Validação da V7.
