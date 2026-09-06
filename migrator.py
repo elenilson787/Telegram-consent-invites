@@ -45,6 +45,24 @@ def classify_candidates(users, destination_ids, source_admin_ids, excluded_user_
     return admins, bots, excluded, already_members, eligible
 
 
+def select_explicit_targets(eligible_users, target_user_ids):
+    """Restringe a execução aos IDs explicitamente selecionados.
+
+    Se nenhum alvo for informado, preserva a lista recebida (útil no DRY RUN geral).
+    Retorna também qualquer ID solicitado que não esteja elegível, permitindo que o
+    chamador falhe de forma segura em vez de substituir o alvo por outra pessoa.
+    """
+    users = list(eligible_users)
+    target_ids = set(target_user_ids)
+    if not target_ids:
+        return users, set()
+
+    eligible_by_id = {user.id: user for user in users}
+    missing = target_ids - set(eligible_by_id)
+    selected = [user for user in users if user.id in target_ids]
+    return selected, missing
+
+
 class MigrationEngine:
     def __init__(self, client, destination, max_invites=5, min_delay=15, max_delay=30):
         self.client = client
@@ -124,8 +142,6 @@ class MigrationEngine:
                     'flood_wait',
                     f'Telegram determinou espera de {seconds}s. Não retomar antes de {retry_at.isoformat()}.',
                 )
-                # Não dorme nem tenta novamente automaticamente. A rodada termina e
-                # o operador decide quando retomar, respeitando o prazo do Telegram.
                 stats.stopped = True
                 break
             except PeerFloodError as exc:

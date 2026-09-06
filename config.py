@@ -13,7 +13,7 @@ def required(name: str) -> str:
     return value
 
 
-def parse_user_ids(value: str) -> frozenset[int]:
+def parse_user_ids(value: str, variable_name: str = 'USER_IDS') -> frozenset[int]:
     ids: set[int] = set()
     for item in value.split(','):
         item = item.strip()
@@ -23,11 +23,11 @@ def parse_user_ids(value: str) -> frozenset[int]:
             user_id = int(item)
         except ValueError as exc:
             raise ValueError(
-                f'EXCLUDED_USER_IDS contém um ID inválido: {item!r}. '
+                f'{variable_name} contém um ID inválido: {item!r}. '
                 'Use apenas IDs numéricos separados por vírgula.'
             ) from exc
         if user_id <= 0:
-            raise ValueError('EXCLUDED_USER_IDS aceita apenas IDs positivos.')
+            raise ValueError(f'{variable_name} aceita apenas IDs positivos.')
         ids.add(user_id)
     return frozenset(ids)
 
@@ -42,6 +42,7 @@ class Settings:
     max_delay_seconds: float
     dry_run: bool
     excluded_user_ids: frozenset[int]
+    target_user_ids: frozenset[int]
 
     @classmethod
     def load(cls) -> 'Settings':
@@ -55,12 +56,35 @@ class Settings:
         min_delay = float(os.getenv('MIN_DELAY_SECONDS', '15'))
         max_delay = float(os.getenv('MAX_DELAY_SECONDS', '30'))
         dry_run = os.getenv('DRY_RUN', 'true').lower() in {'1', 'true', 'yes', 'sim'}
-        excluded_user_ids = parse_user_ids(os.getenv('EXCLUDED_USER_IDS', ''))
+        excluded_user_ids = parse_user_ids(
+            os.getenv('EXCLUDED_USER_IDS', ''),
+            'EXCLUDED_USER_IDS',
+        )
+        target_user_ids = parse_user_ids(
+            os.getenv('TARGET_USER_IDS', ''),
+            'TARGET_USER_IDS',
+        )
 
         if api_id <= 0:
             raise ValueError('TELEGRAM_API_ID deve ser um inteiro positivo.')
         if max_invites < 1 or min_delay < 0 or max_delay < min_delay:
             raise ValueError('Configuração de limite/delay inválida.')
+        overlap = excluded_user_ids & target_user_ids
+        if overlap:
+            ids = ', '.join(str(x) for x in sorted(overlap))
+            raise ValueError(
+                f'Os mesmos IDs não podem estar em EXCLUDED_USER_IDS e TARGET_USER_IDS: {ids}'
+            )
+        if not dry_run and not target_user_ids:
+            raise ValueError(
+                'DRY_RUN=false exige TARGET_USER_IDS. '
+                'Defina explicitamente os usuários autorizados para a tentativa real.'
+            )
+        if not dry_run and len(target_user_ids) > max_invites:
+            raise ValueError(
+                'TARGET_USER_IDS contém mais usuários do que MAX_INVITES_PER_RUN. '
+                'Aumente o limite conscientemente ou reduza os alvos.'
+            )
 
         Path(session).parent.mkdir(parents=True, exist_ok=True)
         Path('logs').mkdir(exist_ok=True)
@@ -73,4 +97,5 @@ class Settings:
             max_delay,
             dry_run,
             excluded_user_ids,
+            target_user_ids,
         )

@@ -3,7 +3,7 @@ import sys
 
 from config import Settings
 from extractor import save_members
-from migrator import MigrationEngine, classify_candidates
+from migrator import MigrationEngine, classify_candidates, select_explicit_targets
 from report import ReportWriter
 from telegram_client import TelegramService
 from ui import banner, choose_index, confirm, console, print_stats
@@ -40,8 +40,6 @@ async def main():
         console.print(f'Origem: [bold]{source.title}[/bold]')
         console.print(f'Destino: [bold]{destination.title}[/bold]')
 
-        # A origem pode ser um grupo do qual a conta é apenas participante.
-        # A API do Telegram determina se os participantes estão enumeráveis.
         console.print('[cyan]Lendo membros da origem...[/cyan]')
         try:
             members = await service.get_members(source.entity)
@@ -56,7 +54,6 @@ async def main():
             console.print('[yellow]Nenhum participante acessível foi encontrado.[/yellow]')
             return 0
 
-        # A extração é persistida antes de qualquer tentativa de adição.
         json_path, csv_path, records = save_members(members, source.entity)
         console.print(f'[green]✓ Extração salva em:[/green] {json_path}')
         console.print(f'[green]✓ Cópia CSV salva em:[/green] {csv_path}')
@@ -101,6 +98,27 @@ async def main():
             f'Candidatos para tentativa: {len(eligible)}'
         )
 
+        eligible, missing_targets = select_explicit_targets(
+            eligible,
+            settings.target_user_ids,
+        )
+        if missing_targets:
+            ids = ', '.join(str(x) for x in sorted(missing_targets))
+            console.print(
+                '[red]Alvo(s) explícito(s) não estão elegíveis nesta execução: '
+                f'{ids}.[/red]'
+            )
+            console.print(
+                '[yellow]Nenhuma tentativa será feita. Confira se o usuário ainda está na origem, '
+                'não é admin, não está bloqueado e ainda não está no destino.[/yellow]'
+            )
+            return 1
+
+        if settings.target_user_ids:
+            console.print('[bold cyan]Alvos explícitos desta execução:[/bold cyan]')
+            for user in eligible:
+                console.print(f'  • {full_name(user)} (ID {user.id})')
+
         report = ReportWriter()
         try:
             if settings.dry_run:
@@ -114,9 +132,11 @@ async def main():
                 ):
                     console.print('[yellow]Extração concluída; nenhuma tentativa de adição foi feita.[/yellow]')
                     return 0
-                if not confirm(
-                    f'Iniciar até {settings.max_invites_per_run} tentativas de adição no destino?'
-                ):
+
+                target_text = ', '.join(
+                    f'{full_name(user)} (ID {user.id})' for user in eligible
+                )
+                if not confirm(f'Confirmar tentativa SOMENTE para: {target_text}?'):
                     console.print('[yellow]Operação cancelada; nenhuma tentativa de adição foi feita.[/yellow]')
                     return 0
 
