@@ -1,7 +1,7 @@
 import asyncio
 import unittest
 
-from migrator import MigrationEngine, classify_candidates
+from migrator import MigrationEngine, classify_candidates, select_explicit_targets
 
 
 class FakeUser:
@@ -63,6 +63,20 @@ class TestMigrationEngine(unittest.TestCase):
         self.assertEqual([u.id for u in excluded], [2])
         self.assertEqual(already, [])
         self.assertEqual(eligible, [])
+
+    def test_explicit_target_selection_never_substitutes_missing_user(self):
+        users = [FakeUser(10), FakeUser(20), FakeUser(30)]
+        selected, missing = select_explicit_targets(users, {20, 99})
+
+        self.assertEqual([u.id for u in selected], [20])
+        self.assertEqual(missing, {99})
+
+    def test_explicit_target_selection_is_exact(self):
+        users = [FakeUser(6879246100), FakeUser(1776570070), FakeUser(8671430555)]
+        selected, missing = select_explicit_targets(users, {6879246100})
+
+        self.assertEqual([u.id for u in selected], [6879246100])
+        self.assertEqual(missing, set())
 
     def test_dry_run_never_sends_and_respects_limit(self):
         users = [FakeUser(1), FakeUser(2), FakeUser(3)]
