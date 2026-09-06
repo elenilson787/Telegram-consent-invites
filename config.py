@@ -28,12 +28,19 @@ class Settings:
         api_id = int(required('TELEGRAM_API_ID'))
         api_hash = required('TELEGRAM_API_HASH')
         session = os.getenv('TELEGRAM_SESSION', 'sessions/main').strip() or 'sessions/main'
-        max_invites = int(os.getenv('MAX_INVITES_PER_RUN', '50'))
+
+        # Defaults deliberadamente seguros: sem configuração explícita,
+        # nenhuma adição real é enviada e a rodada fica limitada a 5 candidatos.
+        max_invites = int(os.getenv('MAX_INVITES_PER_RUN', '5'))
         min_delay = float(os.getenv('MIN_DELAY_SECONDS', '15'))
         max_delay = float(os.getenv('MAX_DELAY_SECONDS', '30'))
-        dry_run = os.getenv('DRY_RUN', 'false').lower() in {'1', 'true', 'yes', 'sim'}
+        dry_run = os.getenv('DRY_RUN', 'true').lower() in {'1', 'true', 'yes', 'sim'}
+
+        if api_id <= 0:
+            raise ValueError('TELEGRAM_API_ID deve ser um inteiro positivo.')
         if max_invites < 1 or min_delay < 0 or max_delay < min_delay:
             raise ValueError('Configuração de limite/delay inválida.')
+
         Path(session).parent.mkdir(parents=True, exist_ok=True)
         Path('logs').mkdir(exist_ok=True)
         return cls(api_id, api_hash, session, max_invites, min_delay, max_delay, dry_run)

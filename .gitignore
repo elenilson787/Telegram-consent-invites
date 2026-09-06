@@ -7,6 +7,7 @@ __pycache__/
 sessions/
 logs/*.csv
 data/*.json
+data/*.csv
 .pytest_cache/
 .idea/
 .vscode/
