@@ -13,6 +13,25 @@ def required(name: str) -> str:
     return value
 
 
+def parse_user_ids(value: str) -> frozenset[int]:
+    ids: set[int] = set()
+    for item in value.split(','):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            user_id = int(item)
+        except ValueError as exc:
+            raise ValueError(
+                f'EXCLUDED_USER_IDS contém um ID inválido: {item!r}. '
+                'Use apenas IDs numéricos separados por vírgula.'
+            ) from exc
+        if user_id <= 0:
+            raise ValueError('EXCLUDED_USER_IDS aceita apenas IDs positivos.')
+        ids.add(user_id)
+    return frozenset(ids)
+
+
 @dataclass(frozen=True)
 class Settings:
     api_id: int
@@ -22,6 +41,7 @@ class Settings:
     min_delay_seconds: float
     max_delay_seconds: float
     dry_run: bool
+    excluded_user_ids: frozenset[int]
 
     @classmethod
     def load(cls) -> 'Settings':
@@ -35,6 +55,7 @@ class Settings:
         min_delay = float(os.getenv('MIN_DELAY_SECONDS', '15'))
         max_delay = float(os.getenv('MAX_DELAY_SECONDS', '30'))
         dry_run = os.getenv('DRY_RUN', 'true').lower() in {'1', 'true', 'yes', 'sim'}
+        excluded_user_ids = parse_user_ids(os.getenv('EXCLUDED_USER_IDS', ''))
 
         if api_id <= 0:
             raise ValueError('TELEGRAM_API_ID deve ser um inteiro positivo.')
@@ -43,4 +64,13 @@ class Settings:
 
         Path(session).parent.mkdir(parents=True, exist_ok=True)
         Path('logs').mkdir(exist_ok=True)
-        return cls(api_id, api_hash, session, max_invites, min_delay, max_delay, dry_run)
+        return cls(
+            api_id,
+            api_hash,
+            session,
+            max_invites,
+            min_delay,
+            max_delay,
+            dry_run,
+            excluded_user_ids,
+        )
