@@ -1,6 +1,14 @@
 from dataclasses import dataclass
-from telethon import TelegramClient
-from telethon.tl.types import Channel, Chat, User
+
+from telethon import TelegramClient, functions
+from telethon.tl.types import (
+    Channel,
+    ChannelParticipantsAdmins,
+    Chat,
+    ChatParticipantAdmin,
+    ChatParticipantCreator,
+    User,
+)
 
 
 @dataclass
@@ -53,3 +61,41 @@ class TelegramService:
             if isinstance(user, User):
                 ids.add(user.id)
         return ids
+
+    async def get_admin_ids(self, entity) -> set[int]:
+        """Retorna IDs de administradores/owner visíveis pela API do Telegram.
+
+        Para canais e supergrupos, usa o filtro oficial de administradores.
+        Para grupos básicos, lê a lista administrativa do FullChat.
+        Se a API não permitir essa identificação, a exceção sobe para o
+        chamador e a operação pode falhar de forma segura.
+        """
+        if isinstance(entity, Channel):
+            ids: set[int] = set()
+            async for user in self.client.iter_participants(
+                entity,
+                filter=ChannelParticipantsAdmins(),
+            ):
+                if isinstance(user, User):
+                    ids.add(user.id)
+            return ids
+
+        if isinstance(entity, Chat):
+            result = await self.client(
+                functions.messages.GetFullChatRequest(chat_id=entity.id)
+            )
+            participants = getattr(
+                getattr(result.full_chat, 'participants', None),
+                'participants',
+                [],
+            )
+            return {
+                participant.user_id
+                for participant in participants
+                if isinstance(
+                    participant,
+                    (ChatParticipantAdmin, ChatParticipantCreator),
+                )
+            }
+
+        raise TypeError('Tipo de grupo não suportado para identificar administradores.')

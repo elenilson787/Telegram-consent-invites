@@ -18,6 +18,33 @@ from models import MigrationStats
 from utils import full_name, random_delay
 
 
+def classify_candidates(users, destination_ids, source_admin_ids, excluded_user_ids):
+    """Separa usuários em categorias mutuamente exclusivas antes do convite."""
+    destination_ids = set(destination_ids)
+    source_admin_ids = set(source_admin_ids)
+    excluded_user_ids = set(excluded_user_ids)
+
+    admins = []
+    bots = []
+    excluded = []
+    already_members = []
+    eligible = []
+
+    for user in users:
+        if user.id in source_admin_ids:
+            admins.append(user)
+        elif getattr(user, 'bot', False):
+            bots.append(user)
+        elif user.id in excluded_user_ids:
+            excluded.append(user)
+        elif user.id in destination_ids:
+            already_members.append(user)
+        else:
+            eligible.append(user)
+
+    return admins, bots, excluded, already_members, eligible
+
+
 class MigrationEngine:
     def __init__(self, client, destination, max_invites=5, min_delay=15, max_delay=30):
         self.client = client

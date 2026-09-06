@@ -1,7 +1,7 @@
 import asyncio
 import unittest
 
-from migrator import MigrationEngine
+from migrator import MigrationEngine, classify_candidates
 
 
 class FakeUser:
@@ -27,6 +27,43 @@ class NeverCalledClient:
 
 
 class TestMigrationEngine(unittest.TestCase):
+    def test_candidate_classification_excludes_admins_and_manual_ids(self):
+        users = [
+            FakeUser(1),
+            FakeUser(2),
+            FakeUser(3, bot=True),
+            FakeUser(4),
+            FakeUser(5),
+        ]
+
+        admins, bots, excluded, already, eligible = classify_candidates(
+            users,
+            destination_ids={4},
+            source_admin_ids={1},
+            excluded_user_ids={2},
+        )
+
+        self.assertEqual([u.id for u in admins], [1])
+        self.assertEqual([u.id for u in bots], [3])
+        self.assertEqual([u.id for u in excluded], [2])
+        self.assertEqual([u.id for u in already], [4])
+        self.assertEqual([u.id for u in eligible], [5])
+
+    def test_admin_exclusion_has_priority_over_other_categories(self):
+        users = [FakeUser(1, bot=True), FakeUser(2)]
+        admins, bots, excluded, already, eligible = classify_candidates(
+            users,
+            destination_ids={1, 2},
+            source_admin_ids={1},
+            excluded_user_ids={1, 2},
+        )
+
+        self.assertEqual([u.id for u in admins], [1])
+        self.assertEqual(bots, [])
+        self.assertEqual([u.id for u in excluded], [2])
+        self.assertEqual(already, [])
+        self.assertEqual(eligible, [])
+
     def test_dry_run_never_sends_and_respects_limit(self):
         users = [FakeUser(1), FakeUser(2), FakeUser(3)]
         report = FakeReport()

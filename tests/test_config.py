@@ -1,10 +1,9 @@
 import os
 import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
-from config import Settings
+from config import Settings, parse_user_ids
 
 
 class TestSettings(unittest.TestCase):
@@ -19,6 +18,7 @@ class TestSettings(unittest.TestCase):
             'MIN_DELAY_SECONDS',
             'MAX_DELAY_SECONDS',
             'DRY_RUN',
+            'EXCLUDED_USER_IDS',
         ]
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -27,8 +27,6 @@ class TestSettings(unittest.TestCase):
                 os.chdir(tmp)
                 with patch.dict(os.environ, env, clear=False):
                     with patch.dict(os.environ, {key: '' for key in optional}, clear=False):
-                        # Valores vazios não representam ausência para int/float;
-                        # portanto removemos explicitamente as opcionais.
                         for key in optional:
                             os.environ.pop(key, None)
                         settings = Settings.load()
@@ -39,6 +37,17 @@ class TestSettings(unittest.TestCase):
         self.assertEqual(settings.max_invites_per_run, 5)
         self.assertEqual(settings.min_delay_seconds, 15)
         self.assertEqual(settings.max_delay_seconds, 30)
+        self.assertEqual(settings.excluded_user_ids, frozenset())
+
+    def test_parse_excluded_user_ids(self):
+        self.assertEqual(
+            parse_user_ids('7226192599, 123456789,7226192599'),
+            frozenset({7226192599, 123456789}),
+        )
+
+    def test_invalid_excluded_user_id_is_rejected(self):
+        with self.assertRaises(ValueError):
+            parse_user_ids('123,abc')
 
     def test_invalid_range_is_rejected(self):
         env = {

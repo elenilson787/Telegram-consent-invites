@@ -3,7 +3,7 @@ import sys
 
 from config import Settings
 from extractor import save_members
-from migrator import MigrationEngine
+from migrator import MigrationEngine, classify_candidates
 from report import ReportWriter
 from telegram_client import TelegramService
 from ui import banner, choose_index, confirm, console, print_stats
@@ -62,6 +62,19 @@ async def main():
         console.print(f'[green]✓ Cópia CSV salva em:[/green] {csv_path}')
         console.print(f'Participantes extraídos: [bold]{len(records)}[/bold]')
 
+        console.print('[cyan]Identificando administradores/owner da origem...[/cyan]')
+        try:
+            source_admin_ids = await service.get_admin_ids(source.entity)
+        except Exception as exc:
+            console.print(
+                '[red]Não foi possível identificar os administradores da origem com segurança: '
+                f'{type(exc).__name__}: {exc}[/red]'
+            )
+            console.print(
+                '[yellow]A extração foi preservada; nenhuma tentativa será feita para evitar incluir admins por engano.[/yellow]'
+            )
+            return 1
+
         console.print('[cyan]Verificando membros já presentes no destino...[/cyan]')
         try:
             destination_ids = await service.get_member_ids(destination.entity)
@@ -73,13 +86,17 @@ async def main():
             console.print('[yellow]A extração foi preservada; nenhuma tentativa será feita.[/yellow]')
             return 1
 
-        bots = [u for u in members if getattr(u, 'bot', False)]
-        human_members = [u for u in members if not getattr(u, 'bot', False)]
-        already_members = [u for u in human_members if u.id in destination_ids]
-        eligible = [u for u in human_members if u.id not in destination_ids]
+        admins, bots, excluded, already_members, eligible = classify_candidates(
+            members,
+            destination_ids,
+            source_admin_ids,
+            settings.excluded_user_ids,
+        )
 
         console.print(
+            f'Admins/owner ignorados: {len(admins)} | '
             f'Bots ignorados: {len(bots)} | '
+            f'Exclusões manuais: {len(excluded)} | '
             f'Já no destino: {len(already_members)} | '
             f'Candidatos para tentativa: {len(eligible)}'
         )
