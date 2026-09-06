@@ -45,13 +45,18 @@ class Settings:
     target_user_ids: frozenset[int]
 
     @classmethod
-    def load(cls) -> 'Settings':
+    def load(cls, require_explicit_targets: bool = True) -> 'Settings':
+        """Carrega a configuração local.
+
+        O CLI mantém ``require_explicit_targets=True`` por padrão: em modo real,
+        exige TARGET_USER_IDS. A interface local usa ``False`` porque ela monta a
+        fila automaticamente, exibe a quantidade e exige confirmação explícita
+        antes de uma rodada real.
+        """
         api_id = int(required('TELEGRAM_API_ID'))
         api_hash = required('TELEGRAM_API_HASH')
         session = os.getenv('TELEGRAM_SESSION', 'sessions/main').strip() or 'sessions/main'
 
-        # Defaults deliberadamente seguros: sem configuração explícita,
-        # nenhuma adição real é enviada e a rodada fica limitada a 5 candidatos.
         max_invites = int(os.getenv('MAX_INVITES_PER_RUN', '5'))
         min_delay = float(os.getenv('MIN_DELAY_SECONDS', '15'))
         max_delay = float(os.getenv('MAX_DELAY_SECONDS', '30'))
@@ -75,12 +80,12 @@ class Settings:
             raise ValueError(
                 f'Os mesmos IDs não podem estar em EXCLUDED_USER_IDS e TARGET_USER_IDS: {ids}'
             )
-        if not dry_run and not target_user_ids:
+        if require_explicit_targets and not dry_run and not target_user_ids:
             raise ValueError(
                 'DRY_RUN=false exige TARGET_USER_IDS. '
                 'Defina explicitamente os usuários autorizados para a tentativa real.'
             )
-        if not dry_run and len(target_user_ids) > max_invites:
+        if require_explicit_targets and not dry_run and len(target_user_ids) > max_invites:
             raise ValueError(
                 'TARGET_USER_IDS contém mais usuários do que MAX_INVITES_PER_RUN. '
                 'Aumente o limite conscientemente ou reduza os alvos.'
@@ -88,6 +93,7 @@ class Settings:
 
         Path(session).parent.mkdir(parents=True, exist_ok=True)
         Path('logs').mkdir(exist_ok=True)
+        Path('data').mkdir(exist_ok=True)
         return cls(
             api_id,
             api_hash,
