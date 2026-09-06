@@ -21,6 +21,6 @@ if errorlevel 1 (
   )
 )
 
-python local_app.py
-if errorlevel 1 pause
-endlocal
+rem Abre a interface grafica sem manter uma janela preta do terminal.
+start "" ".venv\Scripts\pythonw.exe" "local_app_v2.py"
+exit /b 0
