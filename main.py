@@ -1,5 +1,6 @@
 import asyncio
 import sys
+
 from config import Settings
 from extractor import save_members
 from migrator import MigrationEngine
@@ -25,7 +26,7 @@ async def main():
 
         dialogs = await service.list_dialogs()
         if len(dialogs) < 2:
-            console.print('[red]São necessários pelo menos dois grupos/canais.[/red]')
+            console.print('[red]São necessários pelo menos dois grupos/canais acessíveis.[/red]')
             return 1
 
         from ui import show_dialogs
@@ -45,34 +46,63 @@ async def main():
         try:
             members = await service.get_members(source.entity)
         except Exception as exc:
-            console.print(f'[red]Não foi possível listar os participantes da origem: {type(exc).__name__}: {exc}[/red]')
+            console.print(
+                '[red]Não foi possível listar os participantes da origem: '
+                f'{type(exc).__name__}: {exc}[/red]'
+            )
             return 1
 
         if not members:
             console.print('[yellow]Nenhum participante acessível foi encontrado.[/yellow]')
             return 0
 
-        # Salva os dados extraídos antes de qualquer tentativa de adição.
+        # A extração é persistida antes de qualquer tentativa de adição.
         json_path, csv_path, records = save_members(members, source.entity)
         console.print(f'[green]✓ Extração salva em:[/green] {json_path}')
         console.print(f'[green]✓ Cópia CSV salva em:[/green] {csv_path}')
         console.print(f'Participantes extraídos: [bold]{len(records)}[/bold]')
 
-        destination_ids = await service.get_member_ids(destination.entity)
-        eligible = [u for u in members if u.id not in destination_ids and not getattr(u, 'bot', False)]
-        console.print(f'Já no destino: {len(members)-len(eligible)} | Candidatos para tentativa: {len(eligible)}')
+        console.print('[cyan]Verificando membros já presentes no destino...[/cyan]')
+        try:
+            destination_ids = await service.get_member_ids(destination.entity)
+        except Exception as exc:
+            console.print(
+                '[red]Não foi possível enumerar o destino com segurança: '
+                f'{type(exc).__name__}: {exc}[/red]'
+            )
+            console.print('[yellow]A extração foi preservada; nenhuma tentativa será feita.[/yellow]')
+            return 1
 
-        if not confirm('Você administra/tem autorização para adicionar participantes no grupo de destino?'):
-            console.print('[yellow]Extração concluída; nenhuma tentativa de adição foi feita.[/yellow]')
-            return 0
+        bots = [u for u in members if getattr(u, 'bot', False)]
+        human_members = [u for u in members if not getattr(u, 'bot', False)]
+        already_members = [u for u in human_members if u.id in destination_ids]
+        eligible = [u for u in human_members if u.id not in destination_ids]
+
+        console.print(
+            f'Bots ignorados: {len(bots)} | '
+            f'Já no destino: {len(already_members)} | '
+            f'Candidatos para tentativa: {len(eligible)}'
+        )
 
         report = ReportWriter()
         try:
-            dry = settings.dry_run
-            if not dry and not confirm('Iniciar as tentativas de adição no destino?'):
-                return 0
-            if dry:
-                console.print('[yellow]DRY_RUN ativo: nenhuma adição será enviada.[/yellow]')
+            if settings.dry_run:
+                console.print(
+                    '[bold yellow]DRY_RUN ativo: nenhuma adição será enviada. '
+                    f'Serão analisados no máximo {settings.max_invites_per_run} candidatos.[/bold yellow]'
+                )
+            else:
+                if not confirm(
+                    'Você administra/tem autorização para adicionar participantes no grupo de destino?'
+                ):
+                    console.print('[yellow]Extração concluída; nenhuma tentativa de adição foi feita.[/yellow]')
+                    return 0
+                if not confirm(
+                    f'Iniciar até {settings.max_invites_per_run} tentativas de adição no destino?'
+                ):
+                    console.print('[yellow]Operação cancelada; nenhuma tentativa de adição foi feita.[/yellow]')
+                    return 0
+
             engine = MigrationEngine(
                 service.client,
                 destination.entity,
@@ -80,11 +110,12 @@ async def main():
                 settings.min_delay_seconds,
                 settings.max_delay_seconds,
             )
-            stats = await engine.run(eligible, report, dry_run=dry)
+            stats = await engine.run(eligible, report, dry_run=settings.dry_run)
             print_stats(stats)
             console.print(f'[green]✓ Relatório: {report.path}[/green]')
         finally:
             report.close()
+
         return 0
     except KeyboardInterrupt:
         console.print('[yellow]Interrompido pelo usuário.[/yellow]')
