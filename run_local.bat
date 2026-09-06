@@ -22,5 +22,5 @@ if errorlevel 1 (
 )
 
 rem Abre a interface grafica sem manter uma janela preta do terminal.
-start "" ".venv\Scripts\pythonw.exe" "local_app_v3.py"
+start "" ".venv\Scripts\pythonw.exe" "local_app_v4.py"
 exit /b 0
