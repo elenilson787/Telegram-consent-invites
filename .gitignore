@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.py[cod]
+.env
+*.session
+*.session-journal
+sessions/
+logs/*.csv
+data/*.json
+.pytest_cache/
+.idea/
+.vscode/
