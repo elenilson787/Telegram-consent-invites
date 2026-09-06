@@ -22,15 +22,14 @@ class LocalAppV6(LocalAppV5):
             'errors': 0,
         }
         self._run_started_at = None
+        self._progress_base_text = 'Nenhuma rodada em execução'
         super().__init__()
         if not self.winfo_exists():
             return
 
         self._apply_product_branding()
         self._install_route_banner()
-        self._install_live_summary()
         self._refresh_route_banner()
-        self._refresh_live_summary()
         self._refresh_primary_button()
         self._apply_mode_ui()
 
@@ -69,26 +68,7 @@ class LocalAppV6(LocalAppV5):
             column=0,
             columnspan=6,
             padx=(2, 8),
-            pady=(7, 0),
-            sticky='ew',
-        )
-
-    def _install_live_summary(self):
-        # Coloca o resumo entre a barra de progresso e os cards de métricas.
-        self.compact_metrics_frame.grid_configure(row=3, pady=(2, 8))
-        self.live_summary_label = ctk.CTkLabel(
-            self.progress_frame,
-            text='',
-            text_color=('gray35', 'gray70'),
-            font=ctk.CTkFont(size=12),
-            anchor='w',
-        )
-        self.live_summary_label.grid(
-            row=2,
-            column=0,
-            columnspan=2,
-            padx=12,
-            pady=(0, 2),
+            pady=(5, 0),
             sticky='ew',
         )
 
@@ -104,18 +84,21 @@ class LocalAppV6(LocalAppV5):
             text=f'ROTA ATUAL   {source.title}   →   {destination.title}'
         )
 
-    def _refresh_live_summary(self):
-        if not hasattr(self, 'live_summary_label'):
-            return
+    def _summary_suffix(self):
         counts = self.live_counts
-        self.live_summary_label.configure(
-            text=(
-                f'Processados {counts["processed"]}   ·   '
-                f'✓ Adicionados {counts["added"]}   ·   '
-                f'↪ Ignorados {counts["ignored"]}   ·   '
-                f'⚠ Restrições {counts["restrictions"]}   ·   '
-                f'✕ Erros {counts["errors"]}'
-            )
+        return (
+            f'Processados {counts["processed"]} · '
+            f'✓ {counts["added"]} · '
+            f'↪ {counts["ignored"]} · '
+            f'⚠ {counts["restrictions"]} · '
+            f'✕ {counts["errors"]}'
+        )
+
+    def _refresh_live_summary(self):
+        if not hasattr(self, 'progress_title') or not self.running:
+            return
+        self.progress_title.configure(
+            text=f'{self._progress_base_text}   |   {self._summary_suffix()}'
         )
 
     def _reset_live_counts(self):
@@ -210,6 +193,16 @@ class LocalAppV6(LocalAppV5):
         if self.running:
             self._run_started_at = time.monotonic()
             self._refresh_primary_button()
+            self._refresh_live_summary()
+
+    def _set_progress(self, current, total, text=None):
+        self._progress_base_text = text or f'Progresso {current}/{total}'
+        super()._set_progress(current, total, self._progress_base_text)
+        self._refresh_live_summary()
+
+    def _reset_progress(self):
+        self._progress_base_text = 'Nenhuma rodada em execução'
+        super()._reset_progress()
 
     def _set_running_controls(self, running):
         super()._set_running_controls(running)
@@ -241,7 +234,8 @@ class LocalAppV6(LocalAppV5):
         self._refresh_history()
 
         self._set_status('Rodada concluída.')
-        self.progress_title.configure(text=f'Rodada concluída · {stats.processed} processados')
+        self._progress_base_text = f'Rodada concluída · {stats.processed} processados'
+        self.progress_title.configure(text=self._progress_base_text)
         self._append_log(
             'Rodada concluída. '
             f'Processados={stats.processed}; adicionados={stats.added}; '
@@ -262,7 +256,6 @@ class LocalAppV6(LocalAppV5):
         self._set_running_controls(False)
         self.start_button.configure(state='normal' if prepared.queue else 'disabled')
         self._refresh_primary_button()
-        self._refresh_live_summary()
         self._show_round_summary(stats, report_path, duration, was_dry_run)
 
     def _show_error_dialog(self, exc):
