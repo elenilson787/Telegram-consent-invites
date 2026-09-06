@@ -8,6 +8,8 @@ sessions/
 logs/*.csv
 data/*.json
 data/*.csv
+data/*.sqlite3
+data/*.db
 .pytest_cache/
 .idea/
 .vscode/
