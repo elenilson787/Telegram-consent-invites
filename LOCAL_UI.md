@@ -8,7 +8,20 @@ A interface desktop roda inteiramente no Windows e reutiliza a sessão Telethon 
 2. Garanta que `.venv` e `.env` existam.
 3. Dê duplo clique em `run_local.bat` ou execute `./run_local.bat` no PowerShell.
 
-Na primeira abertura após uma atualização, o launcher instala `customtkinter` automaticamente se necessário.
+Na primeira abertura após uma atualização, o launcher instala `customtkinter` automaticamente se necessário. Depois disso, a interface é aberta com `pythonw`, sem manter uma janela preta do terminal.
+
+## Modo seguro por padrão
+
+A interface sempre inicia em **MODO SEGURO / DRY RUN**, independentemente do valor salvo em `DRY_RUN` no `.env`.
+
+Para uma rodada real, o operador precisa:
+
+1. desligar o DRY RUN na própria janela;
+2. reanalisar a fila;
+3. marcar a autorização;
+4. confirmar a caixa de diálogo final da rodada real.
+
+Ao trocar origem/destino ou alternar o modo de execução, a fila preparada é invalidada e precisa ser analisada novamente.
 
 ## Fluxo
 
@@ -24,6 +37,18 @@ Na primeira abertura após uma atualização, o launcher instala `customtkinter`
    - usuários que já tiveram uma tentativa real registrada para a mesma rota.
 5. Mantenha **DRY RUN** ligado para validar sem enviar operações.
 6. Para uma rodada real, desligue o DRY RUN, confirme a autorização e escolha o limite da rodada.
+
+## Progresso da rodada
+
+A versão v2 mostra:
+
+- modo seguro/real em destaque no cabeçalho;
+- barra de progresso;
+- usuário/posição atual da rodada;
+- contagem regressiva até a próxima tentativa real;
+- estado de pausa, retomada e parada.
+
+Depois de uma rodada real, a interface retorna automaticamente ao **DRY RUN** e desmarca a autorização.
 
 ## Limites da interface
 
