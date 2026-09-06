@@ -1,3 +1,4 @@
 Telethon==1.44.0
 python-dotenv>=1.1,<2
 rich>=13.9,<15
+customtkinter>=5.2,<6
