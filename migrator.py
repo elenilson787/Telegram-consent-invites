@@ -1,16 +1,25 @@
 import asyncio
+from datetime import datetime, timedelta, timezone
+
 from telethon import functions
 from telethon.errors import (
-    ChatAdminRequiredError, FloodWaitError, PeerFloodError,
-    UserAlreadyParticipantError, UserChannelsTooMuchError,
-    UserKickedError, UserNotMutualContactError, UserPrivacyRestrictedError,
+    ChatAdminRequiredError,
+    FloodWaitError,
+    PeerFloodError,
+    UserAlreadyParticipantError,
+    UserChannelsTooMuchError,
+    UserKickedError,
+    UserNotMutualContactError,
+    UserPrivacyRestrictedError,
 )
+from telethon.tl.types import Chat
+
 from models import MigrationStats
 from utils import full_name, random_delay
 
 
 class MigrationEngine:
-    def __init__(self, client, destination, max_invites=50, min_delay=15, max_delay=30):
+    def __init__(self, client, destination, max_invites=5, min_delay=15, max_delay=30):
         self.client = client
         self.destination = destination
         self.max_invites = max_invites
@@ -18,6 +27,14 @@ class MigrationEngine:
         self.max_delay = max_delay
 
     async def invite_one(self, user):
+        if isinstance(self.destination, Chat):
+            await self.client(functions.messages.AddChatUserRequest(
+                chat_id=self.destination.id,
+                user_id=user,
+                fwd_limit=0,
+            ))
+            return
+
         await self.client(functions.channels.InviteToChannelRequest(
             channel=self.destination,
             users=[user],
@@ -25,27 +42,26 @@ class MigrationEngine:
 
     async def run(self, users, report, dry_run=False):
         stats = MigrationStats()
-        users = [u for u in users if not getattr(u, 'bot', False)]
-        existing = set()
-        try:
-            async for member in self.client.iter_participants(self.destination):
-                existing.add(member.id)
-        except Exception:
-            pass
-        candidates = [u for u in users if u.id not in existing]
+        candidates = [u for u in users if not getattr(u, 'bot', False)]
+        batch = candidates[:self.max_invites]
 
         if dry_run:
-            for u in candidates[:self.max_invites]:
-                report.write(u.id, getattr(u, 'username', None), full_name(u), 'dry_run', 'Nenhuma operação enviada.')
-            stats.skipped = min(len(candidates), self.max_invites)
+            for user in batch:
+                report.write(
+                    user.id,
+                    getattr(user, 'username', None),
+                    full_name(user),
+                    'dry_run',
+                    'Nenhuma operação enviada.',
+                )
+            stats.processed = len(batch)
             return stats
 
-        for user in candidates:
-            if stats.processed >= self.max_invites:
-                stats.stopped = True
-                break
+        for index, user in enumerate(batch):
             stats.processed += 1
-            name, username = full_name(user), getattr(user, 'username', None)
+            name = full_name(user)
+            username = getattr(user, 'username', None)
+
             try:
                 await self.invite_one(user)
                 stats.added += 1
@@ -53,9 +69,12 @@ class MigrationEngine:
             except UserAlreadyParticipantError:
                 stats.already_member += 1
                 report.write(user.id, username, name, 'already_member', 'Já é membro.')
-            except (UserPrivacyRestrictedError, UserNotMutualContactError) as exc:
+            except UserPrivacyRestrictedError as exc:
                 stats.privacy += 1
                 report.write(user.id, username, name, 'privacy', str(exc))
+            except UserNotMutualContactError as exc:
+                stats.privacy += 1
+                report.write(user.id, username, name, 'not_mutual_contact', str(exc))
             except UserChannelsTooMuchError as exc:
                 stats.skipped += 1
                 report.write(user.id, username, name, 'user_limit', str(exc))
@@ -70,8 +89,16 @@ class MigrationEngine:
             except FloodWaitError as exc:
                 stats.rate_limited += 1
                 seconds = int(getattr(exc, 'seconds', 0) or 0)
-                report.write(user.id, username, name, 'flood_wait', f'Telegram determinou espera de {seconds}s.')
-                await asyncio.sleep(seconds)
+                retry_at = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+                report.write(
+                    user.id,
+                    username,
+                    name,
+                    'flood_wait',
+                    f'Telegram determinou espera de {seconds}s. Não retomar antes de {retry_at.isoformat()}.',
+                )
+                # Não dorme nem tenta novamente automaticamente. A rodada termina e
+                # o operador decide quando retomar, respeitando o prazo do Telegram.
                 stats.stopped = True
                 break
             except PeerFloodError as exc:
@@ -83,6 +110,10 @@ class MigrationEngine:
                 stats.errors += 1
                 report.write(user.id, username, name, 'error', f'{type(exc).__name__}: {exc}')
 
-            if stats.processed < min(len(candidates), self.max_invites):
+            if index < len(batch) - 1:
                 await asyncio.sleep(random_delay(self.min_delay, self.max_delay))
+
+        if len(candidates) > self.max_invites:
+            stats.stopped = True
+
         return stats
