@@ -69,6 +69,30 @@ class TestSettings(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'TARGET_USER_IDS'):
                 Settings.load()
 
+    def test_local_ui_can_load_real_config_without_manual_targets(self):
+        env = {
+            'TELEGRAM_API_ID': '12345',
+            'TELEGRAM_API_HASH': 'hash-de-teste',
+            'MAX_INVITES_PER_RUN': '5',
+            'MIN_DELAY_SECONDS': '15',
+            'MAX_DELAY_SECONDS': '30',
+            'DRY_RUN': 'false',
+            'EXCLUDED_USER_IDS': '7226192599',
+            'TARGET_USER_IDS': '',
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            old_cwd = os.getcwd()
+            try:
+                os.chdir(tmp)
+                with patch.dict(os.environ, env, clear=True):
+                    settings = Settings.load(require_explicit_targets=False)
+            finally:
+                os.chdir(old_cwd)
+
+        self.assertFalse(settings.dry_run)
+        self.assertEqual(settings.target_user_ids, frozenset())
+        self.assertEqual(settings.excluded_user_ids, frozenset({7226192599}))
+
     def test_real_mode_accepts_single_explicit_target(self):
         env = {
             'TELEGRAM_API_ID': '12345',
