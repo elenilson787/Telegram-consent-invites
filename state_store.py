@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 class StateStore:
-    """Persistência local de histórico e exclusões para a interface desktop."""
+    """Persistência local de histórico, exclusões e convites por mensagem."""
 
     def __init__(self, path='data/local_state.sqlite3'):
         self.path = Path(path)
@@ -40,6 +40,21 @@ class StateStore:
                     note TEXT,
                     created_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS message_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    source_id INTEGER NOT NULL,
+                    destination_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    username TEXT,
+                    name TEXT,
+                    status TEXT NOT NULL,
+                    reason TEXT
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_message_history_route_user
+                    ON message_history(source_id, destination_id, user_id);
                 """
             )
 
@@ -150,3 +165,67 @@ class StateStore:
                 """
             ).fetchall()
         return {row['status']: int(row['quantity']) for row in rows}
+
+    def record_message_attempt(
+        self,
+        source_id: int,
+        destination_id: int,
+        user_id: int,
+        username: str | None,
+        name: str | None,
+        status: str,
+        reason: str = '',
+    ):
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO message_history(
+                    timestamp, source_id, destination_id, user_id,
+                    username, name, status, reason
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    datetime.now().astimezone().isoformat(timespec='seconds'),
+                    int(source_id),
+                    int(destination_id),
+                    int(user_id),
+                    username or '',
+                    name or '',
+                    status,
+                    reason or '',
+                ),
+            )
+
+    def messaged_ids(self, source_id: int, destination_id: int) -> set[int]:
+        """Evita repetir mensagens reais na mesma rota.
+
+        Simulações não contam como contato realizado.
+        """
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT DISTINCT user_id
+                FROM message_history
+                WHERE source_id = ?
+                  AND destination_id = ?
+                  AND status <> 'message_dry_run'
+                """,
+                (int(source_id), int(destination_id)),
+            ).fetchall()
+        return {int(row['user_id']) for row in rows}
+
+    def recent_message_history(self, limit: int = 100):
+        limit = max(1, min(int(limit), 1000))
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT timestamp, source_id, destination_id, user_id,
+                       username, name, status, reason
+                FROM message_history
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
