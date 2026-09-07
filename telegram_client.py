@@ -99,3 +99,18 @@ class TelegramService:
             }
 
         raise TypeError('Tipo de grupo não suportado para identificar administradores.')
+
+    async def export_invite_link(self, entity) -> str:
+        """Cria/obtém um link de convite para o grupo/canal informado.
+
+        A conta conectada precisa ter permissão administrativa para criar
+        convites no destino. O link é retornado ao chamador para que a interface
+        possa copiá-lo para a área de transferência.
+        """
+        result = await self.client(
+            functions.messages.ExportChatInviteRequest(peer=entity)
+        )
+        link = getattr(result, 'link', None)
+        if not link:
+            raise RuntimeError('O Telegram não retornou um link de convite.')
+        return link
