@@ -8,6 +8,7 @@ from telethon.errors import (
     PeerFloodError,
     UserAlreadyParticipantError,
     UserChannelsTooMuchError,
+    UserIdInvalidError,
     UserKickedError,
     UserNotMutualContactError,
     UserPrivacyRestrictedError,
@@ -126,6 +127,15 @@ class MigrationEngine:
             except UserKickedError as exc:
                 stats.skipped += 1
                 report.write(user.id, username, name, 'kicked', str(exc))
+            except UserIdInvalidError as exc:
+                stats.skipped += 1
+                report.write(
+                    user.id,
+                    username,
+                    name,
+                    'invalid_user',
+                    f'Usuário não aceito pela API para esta operação: {exc}',
+                )
             except ChatAdminRequiredError as exc:
                 stats.permissions += 1
                 report.write(user.id, username, name, 'permission_error', str(exc))
