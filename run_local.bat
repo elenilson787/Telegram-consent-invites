@@ -22,5 +22,5 @@ if errorlevel 1 (
 )
 
 rem Abre a interface grafica cyber-neon responsiva sem janela preta.
-start "" ".venv\Scripts\pythonw.exe" "local_app_v10.py"
+start "" ".venv\Scripts\pythonw.exe" "local_app_v11.py"
 exit /b 0
