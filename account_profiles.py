@@ -11,6 +11,56 @@ def now_iso() -> str:
     return datetime.now().astimezone().isoformat(timespec='seconds')
 
 
+def normalize_phone(phone: str, default_country_code: str | None = None) -> str:
+    """Normaliza telefone para E.164 antes de chamar a API do Telegram.
+
+    A instalação brasileira usa ``55`` como DDI padrão. Assim entradas como
+    ``(93) 99999-9999`` ou ``93999999999`` viram ``+5593999999999``. Números
+    já informados com ``+`` ou ``00`` preservam o DDI explícito.
+    """
+    raw = str(phone or '').strip()
+    if not raw:
+        raise ValueError('Informe o número do Telegram com DDI ou DDD + número.')
+
+    explicit_international = raw.startswith('+') or raw.startswith('00')
+    digits = re.sub(r'\D+', '', raw)
+    if raw.startswith('00') and digits.startswith('00'):
+        digits = digits[2:]
+
+    if not digits:
+        raise ValueError('O telefone deve conter números.')
+
+    default_country_code = (
+        str(default_country_code or os.getenv('AFILIAPULSE_DEFAULT_COUNTRY_CODE', '55'))
+        .strip()
+        .lstrip('+')
+    )
+    if not default_country_code.isdigit():
+        default_country_code = '55'
+
+    if explicit_international:
+        normalized_digits = digits
+    elif digits.startswith(default_country_code) and len(digits) in {12, 13}:
+        normalized_digits = digits
+    elif len(digits) in {10, 11}:
+        normalized_digits = default_country_code + digits
+    else:
+        # Permite outros países quando o usuário informou o DDI sem o sinal +.
+        normalized_digits = digits
+
+    if not 8 <= len(normalized_digits) <= 15:
+        raise ValueError(
+            'Número inválido. Informe DDI + DDD + número, por exemplo +55 93 99999-9999.'
+        )
+
+    if normalized_digits.startswith('55') and len(normalized_digits) not in {12, 13}:
+        raise ValueError(
+            'Número brasileiro inválido. Use DDD + telefone, por exemplo (93) 99999-9999.'
+        )
+
+    return '+' + normalized_digits
+
+
 def mask_phone(phone: str) -> str:
     digits = re.sub(r'\D+', '', str(phone or ''))
     if not digits:
@@ -86,6 +136,21 @@ class AccountProfileStore:
     def get(self, account_id: str) -> TelegramAccountProfile | None:
         for profile in self.list():
             if profile.id == account_id:
+                return profile
+        return None
+
+    def find_by_telegram_user_id(
+        self,
+        telegram_user_id: int | None,
+        exclude_account_id: str | None = None,
+    ) -> TelegramAccountProfile | None:
+        if not telegram_user_id:
+            return None
+        target = int(telegram_user_id)
+        for profile in self.list():
+            if exclude_account_id and profile.id == exclude_account_id:
+                continue
+            if profile.telegram_user_id and int(profile.telegram_user_id) == target:
                 return profile
         return None
 
