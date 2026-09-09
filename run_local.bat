@@ -21,6 +21,6 @@ if errorlevel 1 (
   )
 )
 
-rem Abre a interface grafica mais recente sem janela preta.
-start "" ".venv\Scripts\pythonw.exe" "local_app_v12.py"
+rem Abre a interface grafica comercial multi-contas mais recente.
+start "" ".venv\Scripts\pythonw.exe" "local_app_v13.py"
 exit /b 0
