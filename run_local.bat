@@ -21,6 +21,6 @@ if errorlevel 1 (
   )
 )
 
-rem Abre a interface grafica comercial multi-contas mais recente.
-start "" ".venv\Scripts\pythonw.exe" "local_app_v15.py"
+rem Abre o Telegram Extractor comercial multi-contas mais recente.
+start "" ".venv\Scripts\pythonw.exe" "local_app_v16.py"
 exit /b 0
