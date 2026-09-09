@@ -44,17 +44,33 @@ class Settings:
     excluded_user_ids: frozenset[int]
     target_user_ids: frozenset[int]
 
+    @property
+    def telegram_app_provisioned(self) -> bool:
+        return self.api_id > 0 and bool(self.api_hash.strip())
+
     @classmethod
     def load(cls, require_explicit_targets: bool = True) -> 'Settings':
         """Carrega a configuração local.
 
-        O CLI mantém ``require_explicit_targets=True`` por padrão: em modo real,
-        exige TARGET_USER_IDS. A interface local usa ``False`` porque ela monta a
-        fila automaticamente, exibe a quantidade e exige confirmação explícita
-        antes de uma rodada real.
+        O CLI mantém ``require_explicit_targets=True`` por padrão e exige as
+        credenciais técnicas do aplicativo Telegram. A interface desktop usa
+        ``False``: ela pode abrir antes do provisionamento para mostrar onboarding
+        e gerenciamento de contas. O envio/conexão só é liberado quando as
+        credenciais do aplicativo estiverem disponíveis.
         """
-        api_id = int(required('TELEGRAM_API_ID'))
-        api_hash = required('TELEGRAM_API_HASH')
+        raw_api_id = os.getenv('TELEGRAM_API_ID', '').strip()
+        raw_api_hash = os.getenv('TELEGRAM_API_HASH', '').strip()
+
+        if require_explicit_targets:
+            api_id = int(required('TELEGRAM_API_ID'))
+            api_hash = required('TELEGRAM_API_HASH')
+        else:
+            try:
+                api_id = int(raw_api_id) if raw_api_id else 0
+            except ValueError as exc:
+                raise ValueError('TELEGRAM_API_ID deve ser um inteiro positivo.') from exc
+            api_hash = raw_api_hash
+
         session = os.getenv('TELEGRAM_SESSION', 'sessions/main').strip() or 'sessions/main'
 
         max_invites = int(os.getenv('MAX_INVITES_PER_RUN', '5'))
@@ -70,8 +86,14 @@ class Settings:
             'TARGET_USER_IDS',
         )
 
-        if api_id <= 0:
+        if api_id < 0:
             raise ValueError('TELEGRAM_API_ID deve ser um inteiro positivo.')
+        if raw_api_id and api_id == 0:
+            raise ValueError('TELEGRAM_API_ID deve ser maior que zero.')
+        if require_explicit_targets and api_id <= 0:
+            raise ValueError('TELEGRAM_API_ID deve ser um inteiro positivo.')
+        if require_explicit_targets and not api_hash:
+            raise ValueError('TELEGRAM_API_HASH é obrigatório.')
         if max_invites < 1 or min_delay < 0 or max_delay < min_delay:
             raise ValueError('Configuração de limite/delay inválida.')
         overlap = excluded_user_ids & target_user_ids
