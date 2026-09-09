@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from telethon import TelegramClient, functions
+from telethon.errors import SessionPasswordNeededError
 from telethon.tl.types import (
     Channel,
     ChannelParticipantsAdmins,
@@ -23,12 +24,64 @@ class ChatInfo:
 class TelegramService:
     def __init__(self, api_id: int, api_hash: str, session: str):
         self.client = TelegramClient(session, api_id, api_hash)
+        self._pending_phone: str | None = None
+        self._pending_phone_code_hash: str | None = None
 
     async def connect(self):
-        await self.client.start()
+        """Conecta uma sessão que já foi autorizada.
+
+        Diferente de ``client.start()``, este método nunca abre prompt no terminal.
+        Isso permite que o onboarding seja inteiramente controlado pela GUI.
+        """
+        await self.client.connect()
         if not await self.client.is_user_authorized():
-            raise RuntimeError('A conta não foi autorizada.')
+            raise RuntimeError('Esta sessão ainda precisa ser autenticada.')
         return await self.client.get_me()
+
+    async def begin_login(self, phone: str):
+        """Inicia login enviando o código para o número informado."""
+        phone = str(phone or '').strip()
+        if not phone:
+            raise ValueError('Informe o número do Telegram com DDI.')
+        await self.client.connect()
+        if await self.client.is_user_authorized():
+            return {'already_authorized': True, 'user': await self.client.get_me()}
+
+        sent = await self.client.send_code_request(phone)
+        self._pending_phone = phone
+        self._pending_phone_code_hash = getattr(sent, 'phone_code_hash', None)
+        return {'already_authorized': False, 'type': getattr(sent, 'type', None)}
+
+    async def complete_login_code(self, code: str):
+        """Confirma o código. Retorna ``needs_password`` quando há 2FA."""
+        if not self._pending_phone:
+            raise RuntimeError('Nenhum login foi iniciado para esta sessão.')
+        code = str(code or '').strip().replace(' ', '')
+        if not code:
+            raise ValueError('Informe o código recebido no Telegram.')
+        try:
+            user = await self.client.sign_in(
+                phone=self._pending_phone,
+                code=code,
+                phone_code_hash=self._pending_phone_code_hash,
+            )
+        except SessionPasswordNeededError:
+            return {'needs_password': True, 'user': None}
+        return {'needs_password': False, 'user': user or await self.client.get_me()}
+
+    async def complete_login_password(self, password: str):
+        """Finaliza autenticação de contas com verificação em duas etapas."""
+        password = str(password or '')
+        if not password:
+            raise ValueError('Informe a senha de verificação em duas etapas.')
+        user = await self.client.sign_in(password=password)
+        return user or await self.client.get_me()
+
+    async def logout(self):
+        """Encerra a sessão Telegram atualmente conectada."""
+        if not self.client.is_connected():
+            await self.client.connect()
+        await self.client.log_out()
 
     async def disconnect(self):
         await self.client.disconnect()
@@ -63,13 +116,7 @@ class TelegramService:
         return ids
 
     async def get_admin_ids(self, entity) -> set[int]:
-        """Retorna IDs de administradores/owner visíveis pela API do Telegram.
-
-        Para canais e supergrupos, usa o filtro oficial de administradores.
-        Para grupos básicos, lê a lista administrativa do FullChat.
-        Se a API não permitir essa identificação, a exceção sobe para o
-        chamador e a operação pode falhar de forma segura.
-        """
+        """Retorna IDs de administradores/owner visíveis pela API do Telegram."""
         if isinstance(entity, Channel):
             ids: set[int] = set()
             async for user in self.client.iter_participants(
@@ -101,12 +148,6 @@ class TelegramService:
         raise TypeError('Tipo de grupo não suportado para identificar administradores.')
 
     async def export_invite_link(self, entity) -> str:
-        """Cria/obtém um link de convite para o grupo/canal informado.
-
-        A conta conectada precisa ter permissão administrativa para criar
-        convites no destino. O link é retornado ao chamador para que a interface
-        possa copiá-lo para a área de transferência.
-        """
         result = await self.client(
             functions.messages.ExportChatInviteRequest(peer=entity)
         )
