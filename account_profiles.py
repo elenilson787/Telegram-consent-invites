@@ -11,6 +11,14 @@ def now_iso() -> str:
     return datetime.now().astimezone().isoformat(timespec='seconds')
 
 
+def _env_first(*names: str, default: str = '') -> str:
+    for name in names:
+        value = os.getenv(name, '').strip()
+        if value:
+            return value
+    return default
+
+
 def normalize_phone(phone: str, default_country_code: str | None = None) -> str:
     """Normaliza telefone para E.164 antes de chamar a API do Telegram.
 
@@ -31,7 +39,14 @@ def normalize_phone(phone: str, default_country_code: str | None = None) -> str:
         raise ValueError('O telefone deve conter números.')
 
     default_country_code = (
-        str(default_country_code or os.getenv('AFILIAPULSE_DEFAULT_COUNTRY_CODE', '55'))
+        str(
+            default_country_code
+            or _env_first(
+                'TELEGRAM_EXTRACTOR_DEFAULT_COUNTRY_CODE',
+                'AFILIAPULSE_DEFAULT_COUNTRY_CODE',
+                default='55',
+            )
+        )
         .strip()
         .lstrip('+')
     )
@@ -166,7 +181,11 @@ class AccountProfileStore:
 
     def max_accounts(self) -> int:
         """Limite provisório até a política vir do SaaS/licença."""
-        raw = os.getenv('AFILIAPULSE_MAX_TELEGRAM_ACCOUNTS', '3').strip() or '3'
+        raw = _env_first(
+            'TELEGRAM_EXTRACTOR_MAX_ACCOUNTS',
+            'AFILIAPULSE_MAX_TELEGRAM_ACCOUNTS',
+            default='3',
+        )
         try:
             value = int(raw)
         except ValueError:
