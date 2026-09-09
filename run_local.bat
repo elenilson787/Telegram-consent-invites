@@ -10,7 +10,7 @@ if not exist ".venv\Scripts\python.exe" (
 )
 
 call ".venv\Scripts\activate.bat"
-python -c "import customtkinter" >nul 2>&1
+python -c "import customtkinter, keyring" >nul 2>&1
 if errorlevel 1 (
   echo Instalando dependencias da interface local...
   python -m pip install -r requirements.txt
@@ -21,6 +21,6 @@ if errorlevel 1 (
   )
 )
 
-rem Abre o Telegram Extractor comercial multi-contas mais recente.
-start "" ".venv\Scripts\pythonw.exe" "local_app_v16.py"
+rem Abre o Telegram Extractor com login, assinatura e limites por plano.
+start "" ".venv\Scripts\pythonw.exe" "local_app_v17.py"
 exit /b 0
