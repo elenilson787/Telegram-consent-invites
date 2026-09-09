@@ -1,10 +1,10 @@
 import sqlite3
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 
 class StateStore:
-    """Persistência local de histórico, exclusões e convites por mensagem."""
+    """Persistência local de histórico, exclusões, mensagens e métricas operacionais."""
 
     def __init__(self, path='data/local_state.sqlite3'):
         self.path = Path(path)
@@ -229,3 +229,68 @@ class StateStore:
                 (limit,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    @staticmethod
+    def _normalize_day(day_value=None) -> str:
+        if day_value is None:
+            return datetime.now().astimezone().date().isoformat()
+        if isinstance(day_value, datetime):
+            return day_value.astimezone().date().isoformat()
+        if isinstance(day_value, date):
+            return day_value.isoformat()
+        return str(day_value)[:10]
+
+    def activity_counts_for_day(self, day_value=None) -> dict:
+        """Resumo exato das operações reais de um dia no banco desta conta."""
+        day = self._normalize_day(day_value)
+        with self._connect() as connection:
+            attempt_rows = connection.execute(
+                """
+                SELECT status, COUNT(*) AS quantity
+                FROM attempt_history
+                WHERE substr(timestamp, 1, 10) = ?
+                  AND status <> 'dry_run'
+                GROUP BY status
+                """,
+                (day,),
+            ).fetchall()
+            message_rows = connection.execute(
+                """
+                SELECT status, COUNT(*) AS quantity
+                FROM message_history
+                WHERE substr(timestamp, 1, 10) = ?
+                  AND status <> 'message_dry_run'
+                GROUP BY status
+                """,
+                (day,),
+            ).fetchall()
+
+        attempts = {row['status']: int(row['quantity']) for row in attempt_rows}
+        messages = {row['status']: int(row['quantity']) for row in message_rows}
+        direct_total = sum(attempts.values())
+        message_total = sum(messages.values())
+        rate_limit_statuses = {'peer_flood', 'flood_wait'}
+        message_rate_limit_statuses = {'message_peer_flood', 'message_flood_wait'}
+
+        return {
+            'day': day,
+            'direct_attempts': direct_total,
+            'added': int(attempts.get('added', 0)),
+            'direct_rate_limits': sum(attempts.get(status, 0) for status in rate_limit_statuses),
+            'direct_errors': int(attempts.get('error', 0)),
+            'messages_attempted': message_total,
+            'messages_sent': int(messages.get('message_sent', 0)),
+            'message_rate_limits': sum(messages.get(status, 0) for status in message_rate_limit_statuses),
+            'message_errors': int(messages.get('message_error', 0)),
+            'attempt_statuses': attempts,
+            'message_statuses': messages,
+        }
+
+    def activity_series(self, days: int = 7) -> list[dict]:
+        """Retorna resumos diários, do mais antigo para hoje."""
+        days = max(1, min(int(days), 90))
+        today = datetime.now().astimezone().date()
+        return [
+            self.activity_counts_for_day(today - timedelta(days=offset))
+            for offset in range(days - 1, -1, -1)
+        ]
