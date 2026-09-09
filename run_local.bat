@@ -22,5 +22,5 @@ if errorlevel 1 (
 )
 
 rem Abre a interface grafica comercial multi-contas mais recente.
-start "" ".venv\Scripts\pythonw.exe" "local_app_v14.py"
+start "" ".venv\Scripts\pythonw.exe" "local_app_v15.py"
 exit /b 0
