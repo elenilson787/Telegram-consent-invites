@@ -21,6 +21,6 @@ if errorlevel 1 (
   )
 )
 
-rem Abre o Telegram Extractor com login, assinatura e limites por plano.
-start "" ".venv\Scripts\pythonw.exe" "local_app_v17.py"
+rem Abre o Telegram Extractor com UX comercial de login e assinatura.
+start "" ".venv\Scripts\pythonw.exe" "local_app_v18.py"
 exit /b 0
