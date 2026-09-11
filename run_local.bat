@@ -21,6 +21,6 @@ if errorlevel 1 (
   )
 )
 
-rem Abre o Telegram Extractor com UX comercial de login e assinatura.
-start "" ".venv\Scripts\pythonw.exe" "local_app_v18.py"
+rem Abre o Telegram Extractor com protecao adaptativa de PeerFlood/FloodWait.
+start "" ".venv\Scripts\pythonw.exe" "local_app_v19.py"
 exit /b 0
